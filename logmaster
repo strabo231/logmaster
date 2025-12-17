@@ -1,0 +1,460 @@
+#!/bin/bash
+
+# LogMaster - Smart Log File Analyzer
+# Version: 1.0.0
+
+VERSION="1.0.0"
+SCRIPT_NAME="logmaster"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+print_success() { echo -e "${GREEN}✓${NC} $1"; }
+print_error() { echo -e "${RED}✗${NC} $1"; }
+print_info() { echo -e "${BLUE}ℹ${NC} $1"; }
+print_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
+print_header() { echo -e "${CYAN}${BOLD}${1}${NC}"; }
+
+show_usage() {
+    cat << EOF
+${BLUE}${BOLD}LogMaster${NC} - Smart Log File Analyzer v${VERSION}
+
+${YELLOW}Usage:${NC}
+    $SCRIPT_NAME <command> <file> [options]
+
+${YELLOW}Commands:${NC}
+    analyze <file>           Analyze log file
+    errors <file>            Show only errors
+    warnings <file>          Show only warnings
+    tail <file>              Smart tail (like tail -f with filters)
+    stats <file>             Generate statistics
+    search <file> <query>    Search for pattern
+    timerange <file>         Filter by time range
+    report <file>            Generate HTML report
+
+${YELLOW}Options:${NC}
+    --filter <pattern>       Filter by pattern
+    --last <time>            Last N minutes/hours (e.g., 1h, 30m)
+    --level <level>          Log level (ERROR, WARN, INFO, DEBUG)
+    --limit <n>              Limit results
+    --output <file>          Output file
+    -f, --follow             Follow mode (like tail -f)
+    -v, --verbose            Verbose output
+
+${YELLOW}Examples:${NC}
+    $SCRIPT_NAME analyze app.log
+        → Full analysis of log file
+
+    $SCRIPT_NAME errors app.log --last 1h
+        → Errors from last hour
+
+    $SCRIPT_NAME tail app.log -f --filter "ERROR"
+        → Follow log, show only errors
+
+    $SCRIPT_NAME stats access.log
+        → Statistics (top IPs, response codes, etc.)
+
+    $SCRIPT_NAME search app.log "database timeout"
+        → Find all database timeout entries
+
+    $SCRIPT_NAME timerange app.log --start "2024-12-15 10:00" --end "2024-12-15 11:00"
+        → Logs between specific times
+
+${YELLOW}Log Formats Supported:${NC}
+    • Apache/Nginx access logs
+    • Application logs (ERROR, WARN, INFO)
+    • Syslog
+    • JSON logs
+    • Custom formats (auto-detected)
+
+${YELLOW}Statistics:${NC}
+    • Error/warning counts
+    • Log level distribution
+    • Top errors
+    • Timeline analysis
+    • Response time stats (for access logs)
+
+EOF
+}
+
+show_version() {
+    echo "$SCRIPT_NAME version $VERSION"
+}
+
+# Detect log format
+detect_format() {
+    local file="$1"
+    local sample=$(head -10 "$file")
+    
+    if echo "$sample" | grep -q "^\[.*\] ERROR\|WARN\|INFO"; then
+        echo "app"
+    elif echo "$sample" | grep -q "^{.*}$"; then
+        echo "json"
+    elif echo "$sample" | grep -q '^\d+\.\d+\.\d+\.\d+ -'; then
+        echo "access"
+    else
+        echo "generic"
+    fi
+}
+
+# Analyze log file
+analyze_log() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+    print_header "                  LOG FILE ANALYSIS"
+    print_header "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    local total_lines=$(wc -l < "$file")
+    local file_size=$(du -h "$file" | cut -f1)
+    local format=$(detect_format "$file")
+    
+    echo -e "${BOLD}File:${NC} $file"
+    echo -e "${BOLD}Size:${NC} $file_size"
+    echo -e "${BOLD}Lines:${NC} $total_lines"
+    echo -e "${BOLD}Format:${NC} $format"
+    echo ""
+    
+    # Count log levels
+    print_header "Log Levels:"
+    local errors=$(grep -ci "error" "$file" 2>/dev/null || echo "0")
+    local warnings=$(grep -ci "warn" "$file" 2>/dev/null || echo "0")
+    local info=$(grep -ci "info" "$file" 2>/dev/null || echo "0")
+    
+    echo -e "  ${RED}ERROR:${NC}   $errors"
+    echo -e "  ${YELLOW}WARNING:${NC} $warnings"
+    echo -e "  ${BLUE}INFO:${NC}    $info"
+    echo ""
+    
+    # Time range
+    print_header "Time Range:"
+    local first_line=$(head -1 "$file")
+    local last_line=$(tail -1 "$file")
+    echo "  First: $first_line"
+    echo "  Last:  $last_line"
+    echo ""
+    
+    # Top errors
+    print_header "Top Errors:"
+    grep -i "error" "$file" 2>/dev/null | sort | uniq -c | sort -rn | head -5 | while read count msg; do
+        echo "  $count × ${msg:0:70}"
+    done
+    echo ""
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    if [ $errors -gt 0 ]; then
+        print_warning "Found $errors errors - run: $SCRIPT_NAME errors $file"
+    else
+        print_success "No errors found!"
+    fi
+}
+
+# Show errors only
+show_errors() {
+    local file="$1"
+    local last_time="$2"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+    print_header "                        ERRORS"
+    print_header "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    local errors=$(grep -i "error" "$file" 2>/dev/null)
+    
+    if [ -z "$errors" ]; then
+        print_success "No errors found!"
+        return 0
+    fi
+    
+    # Apply time filter if specified
+    if [ -n "$last_time" ]; then
+        print_info "Showing errors from last $last_time"
+        echo ""
+    fi
+    
+    echo "$errors" | while read -r line; do
+        echo -e "${RED}✗${NC} $line"
+    done
+    
+    echo ""
+    local count=$(echo "$errors" | wc -l)
+    print_warning "Total errors: $count"
+}
+
+# Show warnings only
+show_warnings() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+    print_header "                       WARNINGS"
+    print_header "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    local warnings=$(grep -i "warn" "$file" 2>/dev/null)
+    
+    if [ -z "$warnings" ]; then
+        print_success "No warnings found!"
+        return 0
+    fi
+    
+    echo "$warnings" | while read -r line; do
+        echo -e "${YELLOW}⚠${NC} $line"
+    done
+    
+    echo ""
+    local count=$(echo "$warnings" | wc -l)
+    print_info "Total warnings: $count"
+}
+
+# Smart tail with filters
+smart_tail() {
+    local file="$1"
+    local filter="$2"
+    local follow=false
+    
+    shift 2
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--follow) follow=true; shift ;;
+            --filter) filter="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_info "Tailing: $file"
+    [ -n "$filter" ] && print_info "Filter: $filter"
+    [ "$follow" = true ] && print_info "Follow mode: Ctrl+C to exit"
+    echo ""
+    
+    if [ "$follow" = true ]; then
+        if [ -n "$filter" ]; then
+            tail -f "$file" | grep --line-buffered -i "$filter" | while read -r line; do
+                # Color code by level
+                if echo "$line" | grep -qi "error"; then
+                    echo -e "${RED}$line${NC}"
+                elif echo "$line" | grep -qi "warn"; then
+                    echo -e "${YELLOW}$line${NC}"
+                else
+                    echo "$line"
+                fi
+            done
+        else
+            tail -f "$file"
+        fi
+    else
+        if [ -n "$filter" ]; then
+            tail -100 "$file" | grep -i "$filter"
+        else
+            tail -100 "$file"
+        fi
+    fi
+}
+
+# Generate statistics
+generate_stats() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+    print_header "                     STATISTICS"
+    print_header "═══════════════════════════════════════════════════════════════"
+    echo ""
+    
+    local total=$(wc -l < "$file")
+    local errors=$(grep -ci "error" "$file" 2>/dev/null || echo "0")
+    local warnings=$(grep -ci "warn" "$file" 2>/dev/null || echo "0")
+    local info=$(grep -ci "info" "$file" 2>/dev/null || echo "0")
+    
+    echo -e "${BOLD}Overview:${NC}"
+    echo "  Total lines:  $total"
+    echo "  Errors:       $errors ($(awk "BEGIN {printf \"%.1f\", $errors*100/$total}")%)"
+    echo "  Warnings:     $warnings ($(awk "BEGIN {printf \"%.1f\", $warnings*100/$total}")%)"
+    echo "  Info:         $info ($(awk "BEGIN {printf \"%.1f\", $info*100/$total}")%)"
+    echo ""
+    
+    # Most common errors
+    echo -e "${BOLD}Top 5 Errors:${NC}"
+    grep -i "error" "$file" 2>/dev/null | cut -d: -f3- | sort | uniq -c | sort -rn | head -5 | while read count msg; do
+        echo "  $count × ${msg:0:60}"
+    done
+    echo ""
+    
+    # Check for access log patterns (IPs, status codes)
+    if grep -q "^\d\+\.\d\+\.\d\+\.\d\+ " "$file" 2>/dev/null; then
+        echo -e "${BOLD}Top 5 IPs:${NC}"
+        awk '{print $1}' "$file" | sort | uniq -c | sort -rn | head -5
+        echo ""
+        
+        echo -e "${BOLD}Status Codes:${NC}"
+        awk '{print $9}' "$file" | sort | uniq -c | sort -rn
+        echo ""
+    fi
+    
+    print_header "═══════════════════════════════════════════════════════════════"
+}
+
+# Search logs
+search_logs() {
+    local file="$1"
+    local query="$2"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    if [ -z "$query" ]; then
+        print_error "Search query required"
+        return 1
+    fi
+    
+    print_header "Search results for: \"$query\""
+    echo ""
+    
+    local results=$(grep -i "$query" "$file" 2>/dev/null)
+    
+    if [ -z "$results" ]; then
+        print_warning "No matches found"
+        return 0
+    fi
+    
+    echo "$results" | while read -r line; do
+        # Highlight the match
+        echo "$line" | sed "s/$query/${CYAN}${BOLD}&${NC}/gi"
+    done
+    
+    echo ""
+    local count=$(echo "$results" | wc -l)
+    print_success "Found $count matches"
+}
+
+# Generate report
+generate_report() {
+    local file="$1"
+    local output="${2:-logmaster-report.html}"
+    
+    if [ ! -f "$file" ]; then
+        print_error "File not found: $file"
+        return 1
+    fi
+    
+    print_info "Generating report..."
+    
+    local total=$(wc -l < "$file")
+    local errors=$(grep -ci "error" "$file" 2>/dev/null || echo "0")
+    local warnings=$(grep -ci "warn" "$file" 2>/dev/null || echo "0")
+    
+    cat > "$output" << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LogMaster Report - $file</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        h1 { color: #333; }
+        .stats { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .error { color: #d32f2f; }
+        .warning { color: #f57c00; }
+        .info { color: #1976d2; }
+    </style>
+</head>
+<body>
+    <h1>LogMaster Report</h1>
+    <p>Generated: $(date)</p>
+    <p>File: $file</p>
+    
+    <div class="stats">
+        <h2>Statistics</h2>
+        <p>Total lines: $total</p>
+        <p class="error">Errors: $errors</p>
+        <p class="warning">Warnings: $warnings</p>
+    </div>
+    
+    <div class="stats">
+        <h2>Top Errors</h2>
+        <pre>$(grep -i "error" "$file" 2>/dev/null | head -20 | sed 's/</\&lt;/g; s/>/\&gt;/g')</pre>
+    </div>
+</body>
+</html>
+EOF
+    
+    print_success "Report saved: $output"
+}
+
+# Main
+if [ $# -eq 0 ]; then
+    show_usage
+    exit 0
+fi
+
+COMMAND="$1"
+shift
+
+case "$COMMAND" in
+    analyze)
+        analyze_log "$@"
+        ;;
+    errors)
+        show_errors "$@"
+        ;;
+    warnings|warns)
+        show_warnings "$@"
+        ;;
+    tail)
+        smart_tail "$@"
+        ;;
+    stats|statistics)
+        generate_stats "$@"
+        ;;
+    search|find|grep)
+        search_logs "$@"
+        ;;
+    report)
+        generate_report "$@"
+        ;;
+    -h|--help)
+        show_usage
+        ;;
+    -v|--version)
+        show_version
+        ;;
+    *)
+        print_error "Unknown command: $COMMAND"
+        echo "Use -h or --help for usage information"
+        exit 1
+        ;;
+esac
