@@ -2,7 +2,33 @@
 
 # LogMaster - Smart Log File Analyzer
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/strabo231/logmaster?style=social)](https://github.com/strabo231/logmaster/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/strabo231/logmaster)](https://github.com/strabo231/logmaster/issues)
+[![Bash](https://img.shields.io/badge/bash-4.0%2B-green.svg)](https://www.gnu.org/software/bash/)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/strabo231?label=Sponsor&logo=github&color=ff69b4)](https://github.com/sponsors/strabo231)
+
 Stop grep-ing through logs! LogMaster analyzes, filters, and visualizes logs in seconds.
+
+---
+
+## 💖 Support This Project
+
+If LogMaster saves you time debugging, consider sponsoring its development!
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-💖_Support_LogMaster-ff69b4?style=for-the-badge&logo=github)](https://github.com/sponsors/strabo231)
+
+**Your sponsorship helps:**
+- ⚡ Faster bug fixes and updates
+- ✨ New log format support
+- 📚 Better documentation
+- 🆕 More free developer tools
+
+### 🏢 Using LogMaster at work?
+
+Consider a [Business tier sponsorship](https://github.com/sponsors/strabo231) for priority support and feature requests!
+
+---
 
 ## Why LogMaster?
 
@@ -11,23 +37,19 @@ Stop grep-ing through logs! LogMaster analyzes, filters, and visualizes logs in 
 - Miss important errors
 - No statistics
 - Hard to spot patterns
-- Difficult to share findings
 
 **The Solution:** Smart log analysis
 - Instant error detection
 - Statistics at a glance
 - Smart filtering
 - Generate reports
-- Follow logs with filters
 
 ## Installation
-
 ```bash
 curl -sSL https://raw.githubusercontent.com/strabo231/logmaster/main/install.sh | bash
 ```
 
 ## Quick Start
-
 ```bash
 # Analyze log file
 logmaster analyze app.log
@@ -40,6 +62,7 @@ logmaster tail app.log -f --filter "ERROR"
 
 # Generate statistics
 logmaster stats access.log
+```
 
 # Search for pattern
 logmaster search app.log "database"
