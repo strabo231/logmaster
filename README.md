@@ -1,3 +1,5 @@
+[![Test LogMaster](https://github.com/strabo231/logmaster/actions/workflows/test.yml/badge.svg)](https://github.com/strabo231/logmaster/actions/workflows/test.yml)
+
 # LogMaster - Smart Log File Analyzer
 
 Stop grep-ing through logs! LogMaster analyzes, filters, and visualizes logs in seconds.
